@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    name: Build, Lint, Test, SAST e Build
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checar o código do repositório
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configurar Node.js (ajuste a versão se precisar)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Install — instalar dependências
+      - name: Install dependencies
+        run: npm ci
+        # TODO: se não usar npm, trocar para yarn/pnpm
+
+      # 4. Lint — análise estática de código
+      - name: Lint
+        run: npm run lint
+        # Espera-se que exista um script "lint" no package.json
+        # e que ele falhe (exit != 0) se houver erros.
+
+      # 5. Test + Coverage — testes com cobertura
+      - name: Test with coverage
+        run: npm test -- --coverage
+        # Recomendado: configurar o limiar de cobertura (ex.: 70%)
+        # no jest.config.(js|ts) usando "coverageThreshold".
+        #
+        # Exemplo (jest.config.js):
+        # coverageThreshold: {
+        #   global: {
+        #     branches: 70,
+        #     functions: 70,
+        #     lines: 70,
+        #     statements: 70,
+        #   },
+        # },
+
+      # 6. (Opcional) Salvar relatório de cobertura como artefato
+      - name: Upload coverage report
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
+
+      # 7. SAST — análise estática de segurança com Semgrep
+      - name: SAST (Semgrep)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        # TODO:
+        # - Criar um token no Semgrep (ou usar CodeQL do GitHub)
+        # - Adicionar em Settings > Secrets and variables > Actions
+        #   com o nome SEMGREP_APP_TOKEN
+        # Por padrão, o Semgrep retorna exit != 0 em findings graves,
+        # o que faz o job falhar (gatilho de bloqueio).
+
+      # 8. Build/Artifacts — build da aplicação
+      - name: Build
+        run: npm run build
+        # Espera-se um script "build" no package.json.
+        # Aqui normalmente geramos JS compilado ou imagem Docker.
+
+      # 9. (Opcional) Upload de artefatos de build
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: |
+            dist
+            build
+        # Ajuste os paths acima conforme sua estrutura real (dist/, build/, etc).
